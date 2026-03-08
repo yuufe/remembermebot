@@ -24,7 +24,7 @@ def keep_alive():
     t.start()
 
 # ─── CONFIG ───
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8742841723:AAF20S6vnWpN2B3RjbBdEPrqTDFWhh8B1Fk")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8742841723:AAGRZVgZqjeERfBRD1CsFrJBvalHDmIixyc")
 CHAT_ID   = int(os.environ.get("CHAT_ID", "814959844"))
 DATA_FILE = "promises.json"
 
@@ -121,14 +121,31 @@ async def cmd_undone(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"↩️ Возвращено: *{p['text']}*", parse_mode="Markdown")
 
 async def cmd_add(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    text = " ".join(ctx.args).strip()
+    if not ctx.args:
+        await update.message.reply_text(
+            "Напиши:\n"
+            "/add o Купить крем — разовое\n"
+            "/add r Не обзывать себя — регулярное\n"
+            "/add m Помочь с Apple Pay — при встрече"
+        ); return
+    TYPE_MAP = {"r": "regular", "o": "once", "m": "meeting"}
+    TYPE_LABEL = {"regular": "регулярное", "once": "разовое", "meeting": "при встрече"}
+    if ctx.args[0].lower() in TYPE_MAP:
+        ptype = TYPE_MAP[ctx.args[0].lower()]
+        text = " ".join(ctx.args[1:]).strip()
+    else:
+        ptype = "once"
+        text = " ".join(ctx.args).strip()
     if not text:
-        await update.message.reply_text("Напиши: /add Текст"); return
+        await update.message.reply_text("Укажи текст обещания после типа"); return
     data = load()
-    data["promises"].append({"id": data["next_id"], "text": text, "type": "once", "done": False,
+    data["promises"].append({"id": data["next_id"], "text": text, "type": ptype, "done": False,
                               "created_at": datetime.now().strftime("%d.%m.%Y")})
     data["next_id"] += 1; save(data)
-    await update.message.reply_text(f"➕ *{text}*\n\n_Записано — значит существует._", parse_mode="Markdown")
+    await update.message.reply_text(
+        f"➕ *{text}*  _({TYPE_LABEL[ptype]})_\n\n_Записано — значит существует._",
+        parse_mode="Markdown"
+    )
 
 async def cmd_delete(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not ctx.args or not ctx.args[0].isdigit():
