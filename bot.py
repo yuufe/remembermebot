@@ -6,7 +6,7 @@ from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update
 from telegram.ext import (
-    Application, CommandHandler, ContextTypes, MessageHandler, filters
+    Application, CommandHandler, ContextTypes
 )
 
 # ─── KEEP-ALIVE (чтобы Render не засыпал) ───
@@ -16,33 +16,30 @@ class KeepAlive(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b"Bot is alive!")
     def log_message(self, format, *args):
-        pass  # отключаем логи
-
-def run_server():
-    port = int(os.environ.get("PORT", 8080))
-    server = HTTPServer(("0.0.0.0", port), KeepAlive)
-    server.serve_forever()
+        pass
 
 def keep_alive():
-    t = threading.Thread(target=run_server)
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), KeepAlive)
+    t = threading.Thread(target=server.serve_forever)
     t.daemon = True
     t.start()
 
 # ─── CONFIG ───
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8742841723:AAGRZVgZqjeERfBRD1CsFrJBvalHDmIixyc")
-CHAT_ID   = int(os.environ.get("CHAT_ID", "814959844"))
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "ВСТАВЬ_ТОКЕН_СЮДА")
+CHAT_ID   = int(os.environ.get("CHAT_ID", "0"))
 DATA_FILE = "promises.json"
 
 # ─── DEFAULT PROMISES ───
 DEFAULT_PROMISES = [
-    {"id": 1, "text": "Отправить доставку",                              "type": "once",    "done": False},
-    {"id": 2, "text": "Не обзывать себя",                                "type": "regular", "done": False},
-    {"id": 3, "text": "Платить за курсы по истории",                     "type": "regular", "done": False},
-    {"id": 4, "text": "Купить всё для волос",                            "type": "once",    "done": False},
-    {"id": 5, "text": "Помочь с Apple Pay",                              "type": "meeting", "done": False},
-    {"id": 6, "text": "Сходить за кремом",                               "type": "meeting", "done": False},
+    {"id": 1, "text": "Отправить доставку",                               "type": "once",    "done": False},
+    {"id": 2, "text": "Не обзывать себя",                                 "type": "regular", "done": False},
+    {"id": 3, "text": "Платить за курсы по истории",                      "type": "regular", "done": False},
+    {"id": 4, "text": "Купить всё для волос",                             "type": "once",    "done": False},
+    {"id": 5, "text": "Помочь с Apple Pay",                               "type": "meeting", "done": False},
+    {"id": 6, "text": "Сходить за кремом",                                "type": "meeting", "done": False},
     {"id": 7, "text": "Когда она расстроена — не молчать, присутствовать","type": "regular", "done": False},
-    {"id": 8, "text": "Быть внимательным к мелочам",                     "type": "regular", "done": False},
+    {"id": 8, "text": "Быть внимательным к мелочам",                      "type": "regular", "done": False},
 ]
 
 RULES = [
@@ -61,7 +58,7 @@ def load():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
-    data = {"promises": DEFAULT_PROMISES[:], "next_id": 9}
+    data = {"promises": [p.copy() for p in DEFAULT_PROMISES], "next_id": 9}
     save(data)
     return data
 
@@ -73,21 +70,17 @@ def save(data):
 def build_list(promises, show_done=False):
     active = [p for p in promises if not p["done"]]
     done   = [p for p in promises if p["done"]]
-    
     TYPE_LABEL = {"once": "разовое", "regular": "регулярное", "meeting": "при встрече"}
-    
     lines = [f"📋 *Активные обещания ({len(active)})*\n"]
     if active:
         for p in active:
             lines.append(f"• [{p['id']}] {p['text']}  _({TYPE_LABEL.get(p['type'], '')})_")
     else:
         lines.append("✨ Все выполнены!")
-    
     if show_done and done:
         lines.append(f"\n✅ *Выполнено ({len(done)})*")
         for p in done:
-            lines.append(f"~• {p['text']}~")
-    
+            lines.append(f"• ~~{p['text']}~~")
     lines.append(f"\n_Выполнено: {len(done)}/{len(promises)}_")
     return "\n".join(lines)
 
@@ -103,11 +96,11 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "/all — все, включая выполненные\n"
         "/done 3 — отметить #3 выполненным\n"
         "/undone 3 — вернуть в активные\n"
-        "/add Текст обещания — добавить новое\n"
+        "/add Текст — добавить новое обещание\n"
         "/delete 3 — удалить обещание\n"
         "/rule — правило дня\n"
         "/remind — напомнить сейчас\n"
-        "/reset — сбросить все к началу\n"
+        "/reset — сбросить к началу\n"
     )
     await update.message.reply_text(text, parse_mode="Markdown")
 
@@ -158,7 +151,7 @@ async def cmd_undone(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def cmd_add(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     text = " ".join(ctx.args).strip()
     if not text:
-        await update.message.reply_text("Напиши что обещаешь: /add Позвонить маме")
+        await update.message.reply_text("Напиши что обещаешь: /add Позвонить")
         return
     data = load()
     new_p = {"id": data["next_id"], "text": text, "type": "once", "done": False,
@@ -194,9 +187,7 @@ async def cmd_remind(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(build_list(data["promises"]), parse_mode="Markdown")
 
 async def cmd_reset(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    data = {"promises": DEFAULT_PROMISES[:], "next_id": 9}
-    for p in data["promises"]:
-        p["done"] = False
+    data = {"promises": [p.copy() for p in DEFAULT_PROMISES], "next_id": 9}
     save(data)
     await update.message.reply_text("♻️ Список сброшен к исходным обещаниям")
 
@@ -208,7 +199,7 @@ async def morning_reminder(ctx: ContextTypes.DEFAULT_TYPE):
         msg = "🌅 Доброе утро!\n\n✨ Все обещания выполнены. Отличная работа."
     else:
         lines = "\n".join(f"• [{p['id']}] {p['text']}" for p in active)
-        msg = f"🌅 *Доброе утро!*\n\nАктивных обещаний: {len(active)}\n\n{lines}\n\n💡 _{daily_rule()}_"
+        msg = f"🌅 *Доброе утро!*\n\nАктивных: {len(active)}\n\n{lines}\n\n💡 _{daily_rule()}_"
     await ctx.bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode="Markdown")
 
 async def evening_reminder(ctx: ContextTypes.DEFAULT_TYPE):
@@ -225,9 +216,10 @@ async def evening_reminder(ctx: ContextTypes.DEFAULT_TYPE):
 
 # ─── MAIN ───
 def main():
+    keep_alive()  # запускаем веб-сервер в фоне ДО asyncio
+
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # Handlers
     app.add_handler(CommandHandler("start",  cmd_start))
     app.add_handler(CommandHandler("list",   cmd_list))
     app.add_handler(CommandHandler("all",    cmd_all))
@@ -239,13 +231,11 @@ def main():
     app.add_handler(CommandHandler("remind", cmd_remind))
     app.add_handler(CommandHandler("reset",  cmd_reset))
 
-    # Schedule: 9:00 morning, 20:00 evening (UTC+3 = UTC 6:00 and 17:00)
     job_queue = app.job_queue
     job_queue.run_daily(morning_reminder, time=datetime.strptime("06:00", "%H:%M").time())
     job_queue.run_daily(evening_reminder, time=datetime.strptime("17:00", "%H:%M").time())
 
-    keep_alive()  # запускаем веб-сервер чтобы Render не засыпал
-    print("✅ Бот запущен. Нажми Ctrl+C для остановки.")
+    print("✅ Бот запущен.")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
