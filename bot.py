@@ -24,7 +24,7 @@ def keep_alive():
     t.start()
 
 # ─── CONFIG ───
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8742841723:AAGRZVgZqjeERfBRD1CsFrJBvalHDmIixyc")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8742841723:AAE78Bt3viP5Ii6E4_lro5kT19IPrFLxy7A")
 CHAT_ID   = int(os.environ.get("CHAT_ID", "814959844"))
 DATA_FILE = "promises.json"
 
