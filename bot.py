@@ -2,7 +2,7 @@ import os
 import json
 import asyncio
 import threading
-from datetime import datetime
+from datetime import datetime, time as dtime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
@@ -89,13 +89,12 @@ def daily_rule():
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     text = (
         "👋 *Трекер обещаний запущен*\n\n"
-        "Команды:\n"
-        "/list — список активных обещаний\n"
-        "/all — все, включая выполненные\n"
+        "/list — активные обещания\n"
+        "/all — все включая выполненные\n"
         "/done 3 — отметить #3 выполненным\n"
         "/undone 3 — вернуть в активные\n"
-        "/add Текст — добавить новое обещание\n"
-        "/delete 3 — удалить обещание\n"
+        "/add Текст — добавить обещание\n"
+        "/delete 3 — удалить\n"
         "/rule — правило дня\n"
         "/remind — напомнить сейчас\n"
         "/reset — сбросить к началу\n"
@@ -103,77 +102,58 @@ async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(text, parse_mode="Markdown")
 
 async def cmd_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    data = load()
-    await update.message.reply_text(build_list(data["promises"]), parse_mode="Markdown")
+    await update.message.reply_text(build_list(load()["promises"]), parse_mode="Markdown")
 
 async def cmd_all(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    data = load()
-    await update.message.reply_text(build_list(data["promises"], show_done=True), parse_mode="Markdown")
+    await update.message.reply_text(build_list(load()["promises"], show_done=True), parse_mode="Markdown")
 
 async def cmd_done(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    args = ctx.args
-    if not args or not args[0].isdigit():
-        await update.message.reply_text("Укажи номер: /done 3")
-        return
-    pid = int(args[0])
+    if not ctx.args or not ctx.args[0].isdigit():
+        await update.message.reply_text("Укажи номер: /done 3"); return
+    pid = int(ctx.args[0])
     data = load()
     p = next((x for x in data["promises"] if x["id"] == pid), None)
     if not p:
-        await update.message.reply_text(f"Обещание #{pid} не найдено")
-        return
+        await update.message.reply_text(f"Обещание #{pid} не найдено"); return
     p["done"] = True
     p["done_at"] = datetime.now().strftime("%d.%m.%Y")
     save(data)
     active = len([x for x in data["promises"] if not x["done"]])
-    await update.message.reply_text(
-        f"✅ Выполнено: *{p['text']}*\n\nОсталось активных: {active}",
-        parse_mode="Markdown"
-    )
+    await update.message.reply_text(f"✅ Выполнено: *{p['text']}*\n\nОсталось: {active}", parse_mode="Markdown")
 
 async def cmd_undone(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    args = ctx.args
-    if not args or not args[0].isdigit():
-        await update.message.reply_text("Укажи номер: /undone 3")
-        return
-    pid = int(args[0])
+    if not ctx.args or not ctx.args[0].isdigit():
+        await update.message.reply_text("Укажи номер: /undone 3"); return
+    pid = int(ctx.args[0])
     data = load()
     p = next((x for x in data["promises"] if x["id"] == pid), None)
     if not p:
-        await update.message.reply_text(f"Обещание #{pid} не найдено")
-        return
+        await update.message.reply_text(f"Обещание #{pid} не найдено"); return
     p["done"] = False
     p.pop("done_at", None)
     save(data)
-    await update.message.reply_text(f"↩️ Возвращено в активные: *{p['text']}*", parse_mode="Markdown")
+    await update.message.reply_text(f"↩️ Возвращено: *{p['text']}*", parse_mode="Markdown")
 
 async def cmd_add(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     text = " ".join(ctx.args).strip()
     if not text:
-        await update.message.reply_text("Напиши что обещаешь: /add Позвонить")
-        return
+        await update.message.reply_text("Напиши: /add Текст обещания"); return
     data = load()
-    new_p = {"id": data["next_id"], "text": text, "type": "once", "done": False,
-             "created_at": datetime.now().strftime("%d.%m.%Y")}
-    data["promises"].append(new_p)
+    data["promises"].append({"id": data["next_id"], "text": text, "type": "once", "done": False,
+                              "created_at": datetime.now().strftime("%d.%m.%Y")})
     data["next_id"] += 1
     save(data)
-    await update.message.reply_text(
-        f"➕ Добавлено: *{text}*\n\n_Записано — значит существует._",
-        parse_mode="Markdown"
-    )
+    await update.message.reply_text(f"➕ Добавлено: *{text}*\n\n_Записано — значит существует._", parse_mode="Markdown")
 
 async def cmd_delete(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    args = ctx.args
-    if not args or not args[0].isdigit():
-        await update.message.reply_text("Укажи номер: /delete 3")
-        return
-    pid = int(args[0])
+    if not ctx.args or not ctx.args[0].isdigit():
+        await update.message.reply_text("Укажи номер: /delete 3"); return
+    pid = int(ctx.args[0])
     data = load()
     before = len(data["promises"])
     data["promises"] = [x for x in data["promises"] if x["id"] != pid]
     if len(data["promises"]) == before:
-        await update.message.reply_text(f"Обещание #{pid} не найдено")
-        return
+        await update.message.reply_text(f"Обещание #{pid} не найдено"); return
     save(data)
     await update.message.reply_text(f"🗑 Обещание #{pid} удалено")
 
@@ -181,20 +161,18 @@ async def cmd_rule(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"💡 *Правило дня:*\n\n{daily_rule()}", parse_mode="Markdown")
 
 async def cmd_remind(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    data = load()
-    await update.message.reply_text(build_list(data["promises"]), parse_mode="Markdown")
+    await update.message.reply_text(build_list(load()["promises"]), parse_mode="Markdown")
 
 async def cmd_reset(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    data = {"promises": [p.copy() for p in DEFAULT_PROMISES], "next_id": 9}
-    save(data)
+    save({"promises": [p.copy() for p in DEFAULT_PROMISES], "next_id": 9})
     await update.message.reply_text("♻️ Список сброшен к исходным обещаниям")
 
-# ─── SCHEDULED REMINDERS ───
+# ─── REMINDERS ───
 async def morning_reminder(ctx: ContextTypes.DEFAULT_TYPE):
     data = load()
     active = [p for p in data["promises"] if not p["done"]]
     if not active:
-        msg = "🌅 Доброе утро!\n\n✨ Все обещания выполнены. Отличная работа."
+        msg = "🌅 Доброе утро!\n\n✨ Все обещания выполнены!"
     else:
         lines = "\n".join(f"• [{p['id']}] {p['text']}" for p in active)
         msg = f"🌅 *Доброе утро!*\n\nАктивных: {len(active)}\n\n{lines}\n\n💡 _{daily_rule()}_"
@@ -203,21 +181,16 @@ async def morning_reminder(ctx: ContextTypes.DEFAULT_TYPE):
 async def evening_reminder(ctx: ContextTypes.DEFAULT_TYPE):
     data = load()
     active = [p for p in data["promises"] if not p["done"]]
-    done   = [p for p in data["promises"] if p["done"]]
-    msg = (
-        f"🌆 *Итог дня*\n\n"
-        f"✅ Выполнено: {len(done)}\n"
-        f"⏳ Активных: {len(active)}\n\n"
-        f"_Каждое выполненное обещание — это кирпич доверия._"
-    )
+    done = [p for p in data["promises"] if p["done"]]
+    msg = (f"🌆 *Итог дня*\n\n✅ Выполнено: {len(done)}\n⏳ Активных: {len(active)}\n\n"
+           f"_Каждое выполненное обещание — это кирпич доверия._")
     await ctx.bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode="Markdown")
 
-# ─── MAIN — используем asyncio.run() для Python 3.14 ───
-async def main():
+# ─── MAIN ───
+def main():
     keep_alive()
 
     app = Application.builder().token(BOT_TOKEN).build()
-
     app.add_handler(CommandHandler("start",  cmd_start))
     app.add_handler(CommandHandler("list",   cmd_list))
     app.add_handler(CommandHandler("all",    cmd_all))
@@ -229,12 +202,11 @@ async def main():
     app.add_handler(CommandHandler("remind", cmd_remind))
     app.add_handler(CommandHandler("reset",  cmd_reset))
 
-    job_queue = app.job_queue
-    job_queue.run_daily(morning_reminder, time=datetime.strptime("06:00", "%H:%M").time())
-    job_queue.run_daily(evening_reminder, time=datetime.strptime("17:00", "%H:%M").time())
+    app.job_queue.run_daily(morning_reminder, time=dtime(6, 0))
+    app.job_queue.run_daily(evening_reminder, time=dtime(17, 0))
 
     print("✅ Бот запущен.")
-    await app.run_polling(allowed_updates=Update.ALL_TYPES)
+    app.run_polling(allowed_updates=Update.ALL_TYPES, stop_signals=[])
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
