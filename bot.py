@@ -5,11 +5,9 @@ import threading
 from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update
-from telegram.ext import (
-    Application, CommandHandler, ContextTypes
-)
+from telegram.ext import Application, CommandHandler, ContextTypes
 
-# ─── KEEP-ALIVE (чтобы Render не засыпал) ───
+# ─── KEEP-ALIVE ───
 class KeepAlive(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -80,7 +78,7 @@ def build_list(promises, show_done=False):
     if show_done and done:
         lines.append(f"\n✅ *Выполнено ({len(done)})*")
         for p in done:
-            lines.append(f"• ~~{p['text']}~~")
+            lines.append(f"• {p['text']} ✓")
     lines.append(f"\n_Выполнено: {len(done)}/{len(promises)}_")
     return "\n".join(lines)
 
@@ -214,9 +212,9 @@ async def evening_reminder(ctx: ContextTypes.DEFAULT_TYPE):
     )
     await ctx.bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode="Markdown")
 
-# ─── MAIN ───
-def main():
-    keep_alive()  # запускаем веб-сервер в фоне ДО asyncio
+# ─── MAIN — используем asyncio.run() для Python 3.14 ───
+async def main():
+    keep_alive()
 
     app = Application.builder().token(BOT_TOKEN).build()
 
@@ -236,7 +234,7 @@ def main():
     job_queue.run_daily(evening_reminder, time=datetime.strptime("17:00", "%H:%M").time())
 
     print("✅ Бот запущен.")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    await app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
