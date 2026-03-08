@@ -26,8 +26,8 @@ def keep_alive():
     t.start()
 
 # ─── CONFIG ───
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "ВСТАВЬ_ТОКЕН_СЮДА")
-CHAT_ID   = int(os.environ.get("CHAT_ID", "0"))
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8742841723:AAGRZVgZqjeERfBRD1CsFrJBvalHDmIixyc")
+CHAT_ID   = int(os.environ.get("CHAT_ID", "814959844"))
 DATA_FILE = "promises.json"
 
 # ─── DEFAULT PROMISES ───
