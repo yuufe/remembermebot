@@ -28,7 +28,6 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "8742841723:AAGRZVgZqjeERfBRD1CsFrJBvalH
 CHAT_ID   = int(os.environ.get("CHAT_ID", "814959844"))
 DATA_FILE = "promises.json"
 
-# ─── DEFAULT PROMISES ───
 DEFAULT_PROMISES = [
     {"id": 1, "text": "Отправить доставку",                               "type": "once",    "done": False},
     {"id": 2, "text": "Не обзывать себя",                                 "type": "regular", "done": False},
@@ -51,7 +50,6 @@ RULES = [
     "Тревога говорит «она охладела». Проверь — правда ли это.",
 ]
 
-# ─── DATA ───
 def load():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r", encoding="utf-8") as f:
@@ -64,7 +62,6 @@ def save(data):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
-# ─── HELPERS ───
 def build_list(promises, show_done=False):
     active = [p for p in promises if not p["done"]]
     done   = [p for p in promises if p["done"]]
@@ -85,20 +82,11 @@ def build_list(promises, show_done=False):
 def daily_rule():
     return RULES[datetime.now().day % len(RULES)]
 
-# ─── COMMANDS ───
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    text = (
-        "👋 *Трекер обещаний запущен*\n\n"
-        "/list — активные обещания\n"
-        "/all — все включая выполненные\n"
-        "/done 3 — отметить #3 выполненным\n"
-        "/undone 3 — вернуть в активные\n"
-        "/add Текст — добавить обещание\n"
-        "/delete 3 — удалить\n"
-        "/rule — правило дня\n"
-        "/remind — напомнить сейчас\n"
-        "/reset — сбросить к началу\n"
-    )
+    text = ("👋 *Трекер обещаний запущен*\n\n"
+            "/list — активные обещания\n/all — все\n/done 3 — выполнено\n"
+            "/undone 3 — вернуть\n/add Текст — добавить\n/delete 3 — удалить\n"
+            "/rule — правило дня\n/remind — напомнить\n/reset — сбросить\n")
     await update.message.reply_text(text, parse_mode="Markdown")
 
 async def cmd_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -114,12 +102,12 @@ async def cmd_done(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     data = load()
     p = next((x for x in data["promises"] if x["id"] == pid), None)
     if not p:
-        await update.message.reply_text(f"Обещание #{pid} не найдено"); return
+        await update.message.reply_text(f"#{pid} не найдено"); return
     p["done"] = True
     p["done_at"] = datetime.now().strftime("%d.%m.%Y")
     save(data)
     active = len([x for x in data["promises"] if not x["done"]])
-    await update.message.reply_text(f"✅ Выполнено: *{p['text']}*\n\nОсталось: {active}", parse_mode="Markdown")
+    await update.message.reply_text(f"✅ *{p['text']}*\n\nОсталось: {active}", parse_mode="Markdown")
 
 async def cmd_undone(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not ctx.args or not ctx.args[0].isdigit():
@@ -128,22 +116,19 @@ async def cmd_undone(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     data = load()
     p = next((x for x in data["promises"] if x["id"] == pid), None)
     if not p:
-        await update.message.reply_text(f"Обещание #{pid} не найдено"); return
-    p["done"] = False
-    p.pop("done_at", None)
-    save(data)
+        await update.message.reply_text(f"#{pid} не найдено"); return
+    p["done"] = False; p.pop("done_at", None); save(data)
     await update.message.reply_text(f"↩️ Возвращено: *{p['text']}*", parse_mode="Markdown")
 
 async def cmd_add(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     text = " ".join(ctx.args).strip()
     if not text:
-        await update.message.reply_text("Напиши: /add Текст обещания"); return
+        await update.message.reply_text("Напиши: /add Текст"); return
     data = load()
     data["promises"].append({"id": data["next_id"], "text": text, "type": "once", "done": False,
                               "created_at": datetime.now().strftime("%d.%m.%Y")})
-    data["next_id"] += 1
-    save(data)
-    await update.message.reply_text(f"➕ Добавлено: *{text}*\n\n_Записано — значит существует._", parse_mode="Markdown")
+    data["next_id"] += 1; save(data)
+    await update.message.reply_text(f"➕ *{text}*\n\n_Записано — значит существует._", parse_mode="Markdown")
 
 async def cmd_delete(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     if not ctx.args or not ctx.args[0].isdigit():
@@ -153,9 +138,9 @@ async def cmd_delete(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     before = len(data["promises"])
     data["promises"] = [x for x in data["promises"] if x["id"] != pid]
     if len(data["promises"]) == before:
-        await update.message.reply_text(f"Обещание #{pid} не найдено"); return
+        await update.message.reply_text(f"#{pid} не найдено"); return
     save(data)
-    await update.message.reply_text(f"🗑 Обещание #{pid} удалено")
+    await update.message.reply_text(f"🗑 #{pid} удалено")
 
 async def cmd_rule(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"💡 *Правило дня:*\n\n{daily_rule()}", parse_mode="Markdown")
@@ -165,9 +150,8 @@ async def cmd_remind(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_reset(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     save({"promises": [p.copy() for p in DEFAULT_PROMISES], "next_id": 9})
-    await update.message.reply_text("♻️ Список сброшен к исходным обещаниям")
+    await update.message.reply_text("♻️ Сброшено к началу")
 
-# ─── REMINDERS ───
 async def morning_reminder(ctx: ContextTypes.DEFAULT_TYPE):
     data = load()
     active = [p for p in data["promises"] if not p["done"]]
@@ -186,10 +170,7 @@ async def evening_reminder(ctx: ContextTypes.DEFAULT_TYPE):
            f"_Каждое выполненное обещание — это кирпич доверия._")
     await ctx.bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode="Markdown")
 
-# ─── MAIN ───
-def main():
-    keep_alive()
-
+async def run_bot():
     app = Application.builder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start",  cmd_start))
     app.add_handler(CommandHandler("list",   cmd_list))
@@ -201,12 +182,18 @@ def main():
     app.add_handler(CommandHandler("rule",   cmd_rule))
     app.add_handler(CommandHandler("remind", cmd_remind))
     app.add_handler(CommandHandler("reset",  cmd_reset))
-
     app.job_queue.run_daily(morning_reminder, time=dtime(6, 0))
     app.job_queue.run_daily(evening_reminder, time=dtime(17, 0))
 
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
     print("✅ Бот запущен.")
-    app.run_polling(allowed_updates=Update.ALL_TYPES, stop_signals=[])
+    # держим бота живым вечно
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    main()
+    keep_alive()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(run_bot())
