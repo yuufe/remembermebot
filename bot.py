@@ -1,15 +1,36 @@
 import os
 import json
 import asyncio
+import threading
 from datetime import datetime
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update
 from telegram.ext import (
     Application, CommandHandler, ContextTypes, MessageHandler, filters
 )
 
+# ─── KEEP-ALIVE (чтобы Render не засыпал) ───
+class KeepAlive(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is alive!")
+    def log_message(self, format, *args):
+        pass  # отключаем логи
+
+def run_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(("0.0.0.0", port), KeepAlive)
+    server.serve_forever()
+
+def keep_alive():
+    t = threading.Thread(target=run_server)
+    t.daemon = True
+    t.start()
+
 # ─── CONFIG ───
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "ВСТАВЬ_ТОКЕН_СЮДА")
-CHAT_ID   = int(os.environ.get("CHAT_ID", "0"))
+BOT_TOKEN = os.environ.get("8742841723:AAGRZVgZqjeERf8RD1CsFrJBvalHDmIixyc", "ВСТАВЬ_ТОКЕН_СЮДА")
+CHAT_ID   = int(os.environ.get("814959844", "0"))
 DATA_FILE = "promises.json"
 
 # ─── DEFAULT PROMISES ───
@@ -223,6 +244,7 @@ def main():
     job_queue.run_daily(morning_reminder, time=datetime.strptime("06:00", "%H:%M").time())
     job_queue.run_daily(evening_reminder, time=datetime.strptime("17:00", "%H:%M").time())
 
+    keep_alive()  # запускаем веб-сервер чтобы Render не засыпал
     print("✅ Бот запущен. Нажми Ctrl+C для остановки.")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
