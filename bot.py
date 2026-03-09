@@ -24,7 +24,7 @@ def keep_alive():
     t.start()
 
 # ─── CONFIG ───
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8742841723:AAE78Bt3viP5Ii6E4_lro5kT19IPrFLxy7A")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8742841723:AAGRZVgZqjeERfBRD1CsFrJBvalHDmIixyc")
 CHAT_ID   = int(os.environ.get("CHAT_ID", "814959844"))
 DATA_FILE = "promises.json"
 
@@ -48,6 +48,18 @@ RULES = [
     "Её «не скучаю» — не правда о чувствах, а защитный механизм.",
     "Меньше слов о том что меняешься. Больше тихих действий.",
     "Тревога говорит «она охладела». Проверь — правда ли это.",
+    "Её кокон — не наказание. Это её способ восстановиться.",
+    "Давление во время её молчания только углубляет дистанцию.",
+    "Один сигнал присутствия — и тишина. Этого достаточно.",
+    "Она возвращается каждый раз. Это и есть ответ на твой главный вопрос.",
+    "Не объявляй об изменениях — просто меняйся. Она заметит сама.",
+    "Счёт любви полный. Сейчас важен счёт надёжности.",
+    "Претензия — это не атака. Это информация от взрослого человека.",
+    "Выполненное обещание весит больше любых слов о любви.",
+    "Три года вместе на расстоянии — это не случайность.",
+    "Когда хочется «починить» прямо сейчас — спроси себя: для кого это?",
+    "Тихое действие без объявления — самый громкий язык для неё.",
+    "Заметил паттерн — уже половина победы над ним.",
 ]
 
 def load():
@@ -80,7 +92,8 @@ def build_list(promises, show_done=False):
     return "\n".join(lines)
 
 def daily_rule():
-    return RULES[datetime.now().day % len(RULES)]
+    day_of_year = datetime.now().timetuple().tm_yday
+    return RULES[day_of_year % len(RULES)]
 
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     text = ("👋 *Трекер обещаний запущен*\n\n"
@@ -172,19 +185,26 @@ async def cmd_reset(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 async def morning_reminder(ctx: ContextTypes.DEFAULT_TYPE):
     data = load()
     active = [p for p in data["promises"] if not p["done"]]
+    rule = daily_rule()
     if not active:
-        msg = "🌅 Доброе утро!\n\n✨ Все обещания выполнены!"
+        msg = f"🌅 *Доброе утро!*\n\n✨ Все обещания выполнены!\n\n💡 _{rule}_"
     else:
         lines = "\n".join(f"• [{p['id']}] {p['text']}" for p in active)
-        msg = f"🌅 *Доброе утро!*\n\nАктивных: {len(active)}\n\n{lines}\n\n💡 _{daily_rule()}_"
+        msg = f"🌅 *Доброе утро!*\n\nАктивных: {len(active)}\n\n{lines}\n\n💡 _{rule}_"
     await ctx.bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode="Markdown")
 
 async def evening_reminder(ctx: ContextTypes.DEFAULT_TYPE):
     data = load()
     active = [p for p in data["promises"] if not p["done"]]
     done = [p for p in data["promises"] if p["done"]]
-    msg = (f"🌆 *Итог дня*\n\n✅ Выполнено: {len(done)}\n⏳ Активных: {len(active)}\n\n"
-           f"_Каждое выполненное обещание — это кирпич доверия._")
+    rule = daily_rule()
+    if not active:
+        promises_msg = "✨ Все обещания выполнены!"
+    else:
+        lines = "\n".join(f"• [{p['id']}] {p['text']}" for p in active)
+        promises_msg = f"⏳ Активных: {len(active)}\n\n{lines}"
+    msg = (f"🌆 *Итог дня*\n\n✅ Выполнено: {len(done)}\n{promises_msg}\n\n"
+           f"💡 _{rule}_")
     await ctx.bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode="Markdown")
 
 async def run_bot():
