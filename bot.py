@@ -2,6 +2,8 @@ import os
 import json
 import asyncio
 import threading
+import urllib.request
+import urllib.error
 from datetime import datetime, time as dtime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import Update
@@ -24,21 +26,24 @@ def keep_alive():
     t.start()
 
 # ─── CONFIG ───
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8742841723:AAE78Bt3viP5Ii6E4_lro5kT19IPrFLxy7A")
-CHAT_ID   = int(os.environ.get("CHAT_ID", "814959844"))
-DATA_FILE = "promises.json"
-QUIZ_FILE = "quiz_state.json"
-QUIZ_INTERVAL = 7 * 60  # 7 минут в секундах
+BOT_TOKEN    = os.environ.get("BOT_TOKEN", "8742841723:AAE78Bt3viP5Ii6E4_lro5kT19IPrFLxy7A")
+CHAT_ID      = int(os.environ.get("CHAT_ID", "814959844"))
+JSONBIN_KEY  = os.environ.get("JSONBIN_KEY", "$2a$10$l6b/WIWg9SANGQPu2qGpuufBI1KvSUToJzUieUYVglVNbbMBthyja")
+JSONBIN_BIN  = os.environ.get("JSONBIN_BIN", "69af3127d0ea881f4001c5df")
+QUIZ_INTERVAL = 7 * 60
 
 DEFAULT_PROMISES = [
-    {"id": 1, "text": "Отправить доставку",                               "type": "once",    "done": False},
-    {"id": 2, "text": "Не обзывать себя",                                 "type": "regular", "done": False},
-    {"id": 3, "text": "Платить за курсы по истории",                      "type": "regular", "done": False},
-    {"id": 4, "text": "Купить всё для волос",                             "type": "once",    "done": False},
-    {"id": 5, "text": "Помочь с Apple Pay",                               "type": "meeting", "done": False},
-    {"id": 6, "text": "Сходить за кремом",                                "type": "meeting", "done": False},
-    {"id": 7, "text": "Когда она расстроена — не молчать, присутствовать","type": "regular", "done": False},
-    {"id": 8, "text": "Быть внимательным к мелочам",                      "type": "regular", "done": False},
+    {"id": 1,  "text": "Отправить доставку",                                "type": "once",    "done": False},
+    {"id": 2,  "text": "Не обзывать себя",                                  "type": "regular", "done": False},
+    {"id": 3,  "text": "Платить за курсы по истории",                       "type": "regular", "done": False},
+    {"id": 4,  "text": "Купить всё для волос",                              "type": "once",    "done": False},
+    {"id": 5,  "text": "Помочь с Apple Pay",                                "type": "meeting", "done": False},
+    {"id": 6,  "text": "Сходить за кремом",                                 "type": "meeting", "done": False},
+    {"id": 7,  "text": "Когда она расстроена — не молчать, присутствовать", "type": "regular", "done": False},
+    {"id": 8,  "text": "Быть внимательным к мелочам",                      "type": "regular", "done": False},
+    {"id": 9,  "text": "Пойти в зал",                                       "type": "regular", "done": False},
+    {"id": 10, "text": "Бросить курить",                                    "type": "regular", "done": False},
+    {"id": 11, "text": "Режим и сбалансированно кушать",                    "type": "regular", "done": False},
 ]
 
 RULES = [
@@ -64,29 +69,63 @@ RULES = [
     "Заметил паттерн — уже половина победы над ним.",
 ]
 
-# ─── DATA ───
+# ─── JSONBIN STORAGE ───
+def _jsonbin_headers(write=False):
+    h = {"X-Master-Key": JSONBIN_KEY, "Content-Type": "application/json"}
+    if not write:
+        h["X-Bin-Meta"] = "false"
+    return h
+
+def cloud_load():
+    if not JSONBIN_KEY or not JSONBIN_BIN:
+        return _default_data()
+    try:
+        req = urllib.request.Request(
+            f"https://api.jsonbin.io/v3/b/{JSONBIN_BIN}/latest",
+            headers=_jsonbin_headers()
+        )
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return json.loads(r.read())
+    except Exception as e:
+        print(f"cloud_load error: {e}")
+        return _default_data()
+
+def cloud_save(data):
+    if not JSONBIN_KEY or not JSONBIN_BIN:
+        return
+    try:
+        body = json.dumps(data).encode()
+        req = urllib.request.Request(
+            f"https://api.jsonbin.io/v3/b/{JSONBIN_BIN}",
+            data=body,
+            headers=_jsonbin_headers(write=True),
+            method="PUT"
+        )
+        urllib.request.urlopen(req, timeout=10)
+    except Exception as e:
+        print(f"cloud_save error: {e}")
+
+def _default_data():
+    return {
+        "promises": [p.copy() for p in DEFAULT_PROMISES],
+        "next_id": 12,
+        "quiz": {"active": False, "remaining": []}
+    }
+
 def load():
-    if os.path.exists(DATA_FILE):
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    data = {"promises": [p.copy() for p in DEFAULT_PROMISES], "next_id": 9}
-    save(data)
+    data = cloud_load()
+    if "promises" not in data:
+        data = _default_data()
+    if "quiz" not in data:
+        data["quiz"] = {"active": False, "remaining": []}
+    if "next_id" not in data:
+        data["next_id"] = max((p["id"] for p in data["promises"]), default=0) + 1
     return data
 
 def save(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    cloud_save(data)
 
-def load_quiz():
-    if os.path.exists(QUIZ_FILE):
-        with open(QUIZ_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {"active": False, "remaining": []}
-
-def save_quiz(state):
-    with open(QUIZ_FILE, "w", encoding="utf-8") as f:
-        json.dump(state, f, ensure_ascii=False, indent=2)
-
+# ─── HELPERS ───
 def build_list(promises, show_done=False):
     active = [p for p in promises if not p["done"]]
     done   = [p for p in promises if p["done"]]
@@ -105,96 +144,101 @@ def build_list(promises, show_done=False):
     return "\n".join(lines)
 
 def daily_rule():
-    day_of_year = datetime.now().timetuple().tm_yday
-    return RULES[day_of_year % len(RULES)]
+    return RULES[datetime.now().timetuple().tm_yday % len(RULES)]
 
 def normalize(text):
     return text.lower().strip().replace("ё", "е")
 
-def check_promise_match(user_text, promise_text):
+def check_match(user_text, promise_text):
     user = normalize(user_text)
     target = normalize(promise_text)
-    # Проверяем что хотя бы 60% слов из обещания упомянуто
     words = [w for w in target.split() if len(w) > 3]
     if not words:
         return user in target or target in user
     matched = sum(1 for w in words if w in user)
     return matched >= max(1, len(words) * 0.6)
 
-# ─── QUIZ LOGIC ───
+# ─── QUIZ ───
 async def start_quiz(bot, job_queue):
     data = load()
-    all_promises = [p["text"] for p in data["promises"]]
-    state = {"active": True, "remaining": all_promises}
-    save_quiz(state)
+    all_texts = [p["text"] for p in data["promises"]]
+    data["quiz"] = {"active": True, "remaining": all_texts}
+    save(data)
+    # отменяем старый пинг если есть
+    for job in job_queue.get_jobs_by_name("quiz_ping"):
+        job.schedule_removal()
     await bot.send_message(
         chat_id=CHAT_ID,
         text=(f"📝 *Квиз запущен!*\n\n"
-              f"Назови все {len(all_promises)} обещаний — по одному или все сразу.\n"
+              f"Назови все {len(all_texts)} обещаний — по одному или все сразу.\n"
               f"Пока не назовёшь все — буду напоминать каждые 7 минут.\n\n"
-              f"_Просто пиши их в чат — не нужны никакие команды_"),
+              f"_Просто пиши в чат — команды не нужны_"),
         parse_mode="Markdown"
     )
-    # Запускаем повторный пинг через 7 минут
     job_queue.run_once(quiz_ping, QUIZ_INTERVAL, name="quiz_ping")
 
 async def quiz_ping(ctx: ContextTypes.DEFAULT_TYPE):
-    state = load_quiz()
-    if not state["active"] or not state["remaining"]:
+    data = load()
+    q = data.get("quiz", {})
+    if not q.get("active") or not q.get("remaining"):
         return
-    remaining = state["remaining"]
+    remaining = q["remaining"]
     lines = "\n".join(f"• {p}" for p in remaining)
     await ctx.bot.send_message(
         chat_id=CHAT_ID,
-        text=(f"⏰ *Квиз ещё не завершён!*\n\n"
-              f"Осталось назвать {len(remaining)}:\n{lines}\n\n"
+        text=(f"⏰ *Ещё не всё названо!*\n\n"
+              f"Осталось {len(remaining)}:\n{lines}\n\n"
               f"_Просто напиши их в чат_"),
         parse_mode="Markdown"
     )
     ctx.job_queue.run_once(quiz_ping, QUIZ_INTERVAL, name="quiz_ping")
 
 async def handle_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    state = load_quiz()
-    if not state["active"] or not state["remaining"]:
+    data = load()
+    q = data.get("quiz", {})
+    if not q.get("active") or not q.get("remaining"):
         return
     user_text = update.message.text
-    remaining = state["remaining"]
-    newly_matched = []
-    still_remaining = []
+    remaining = q["remaining"]
+    matched = []
+    still = []
     for promise in remaining:
-        if check_promise_match(user_text, promise):
-            newly_matched.append(promise)
+        if check_match(user_text, promise):
+            matched.append(promise)
         else:
-            still_remaining.append(promise)
-    if not newly_matched:
+            still.append(promise)
+    if not matched:
         return
-    state["remaining"] = still_remaining
-    if not still_remaining:
-        state["active"] = False
-        save_quiz(state)
-        # Отменяем пинг
+    data["quiz"]["remaining"] = still
+    if not still:
+        data["quiz"]["active"] = False
+        save(data)
         for job in ctx.job_queue.get_jobs_by_name("quiz_ping"):
             job.schedule_removal()
-        matched_lines = "\n".join(f"✅ {p}" for p in newly_matched)
+        lines = "\n".join(f"✅ {p}" for p in matched)
         await update.message.reply_text(
-            f"{matched_lines}\n\n🎉 *Отлично! Все обещания названы!*\n\n_Ты молодец. До следующего раза._",
+            f"{lines}\n\n🎉 *Отлично! Все обещания названы!*\n\n_Ты молодец. До следующего раза._",
             parse_mode="Markdown"
         )
     else:
-        save_quiz(state)
-        matched_lines = "\n".join(f"✅ {p}" for p in newly_matched)
+        save(data)
+        lines = "\n".join(f"✅ {p}" for p in matched)
         await update.message.reply_text(
-            f"{matched_lines}\n\n_Осталось: {len(still_remaining)}_",
+            f"{lines}\n\n_Осталось: {len(still)}_",
             parse_mode="Markdown"
         )
 
 # ─── COMMANDS ───
 async def cmd_start(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    text = ("👋 *Трекер обещаний запущен*\n\n"
-            "/list — активные обещания\n/all — все\n/done 3 — выполнено\n"
-            "/undone 3 — вернуть\n/add o|r|m Текст — добавить\n/delete 3 — удалить\n"
-            "/rule — правило дня\n/remind — список\n/quiz — начать квиз\n/reset — сбросить\n")
-    await update.message.reply_text(text, parse_mode="Markdown")
+    await update.message.reply_text(
+        "👋 *Трекер обещаний запущен*\n\n"
+        "/list — активные обещания\n/all — все\n"
+        "/done 3 — выполнено\n/undone 3 — вернуть\n"
+        "/add o|r|m Текст — добавить\n/delete 3 — удалить\n"
+        "/rule — правило дня\n/remind — список\n"
+        "/quiz — начать квиз\n/reset — сбросить",
+        parse_mode="Markdown"
+    )
 
 async def cmd_list(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(build_list(load()["promises"]), parse_mode="Markdown")
@@ -248,7 +292,8 @@ async def cmd_add(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     data = load()
     data["promises"].append({"id": data["next_id"], "text": text, "type": ptype, "done": False,
                               "created_at": datetime.now().strftime("%d.%m.%Y")})
-    data["next_id"] += 1; save(data)
+    data["next_id"] += 1
+    save(data)
     await update.message.reply_text(
         f"➕ *{text}*  _({TYPE_LABEL[ptype]})_\n\n_Записано — значит существует._",
         parse_mode="Markdown"
@@ -276,8 +321,7 @@ async def cmd_quiz(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await start_quiz(ctx.bot, ctx.job_queue)
 
 async def cmd_reset(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    save({"promises": [p.copy() for p in DEFAULT_PROMISES], "next_id": 9})
-    save_quiz({"active": False, "remaining": []})
+    save(_default_data())
     await update.message.reply_text("♻️ Сброшено к началу")
 
 # ─── SCHEDULED ───
@@ -296,14 +340,14 @@ async def morning_reminder(ctx: ContextTypes.DEFAULT_TYPE):
 async def evening_reminder(ctx: ContextTypes.DEFAULT_TYPE):
     data = load()
     active = [p for p in data["promises"] if not p["done"]]
-    done = [p for p in data["promises"] if p["done"]]
+    done   = [p for p in data["promises"] if p["done"]]
     rule = daily_rule()
     if not active:
         promises_msg = "✨ Все обещания выполнены!"
     else:
         lines = "\n".join(f"• [{p['id']}] {p['text']}" for p in active)
         promises_msg = f"⏳ Активных: {len(active)}\n\n{lines}"
-    msg = (f"🌆 *Итог дня*\n\n✅ Выполнено: {len(done)}\n{promises_msg}\n\n💡 _{rule}_")
+    msg = f"🌆 *Итог дня*\n\n✅ Выполнено: {len(done)}\n{promises_msg}\n\n💡 _{rule}_"
     await ctx.bot.send_message(chat_id=CHAT_ID, text=msg, parse_mode="Markdown")
     await start_quiz(ctx.bot, ctx.job_queue)
 
@@ -323,7 +367,6 @@ async def run_bot():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.job_queue.run_daily(morning_reminder, time=dtime(6, 0))
     app.job_queue.run_daily(evening_reminder, time=dtime(17, 0))
-
     await app.initialize()
     await app.start()
     await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
